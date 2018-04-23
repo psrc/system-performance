@@ -52,7 +52,7 @@ severe_congestion = 0.50
 # Flag to determine if csv file is output or not (yes or no)
 output_csv = 'no'
 
-# Flag to determine if a csv file for a time series animation in ArcMap is desired
+# Flag to determine if a csv file for a time series animation in ArcMap is desired yes or no
 output_timeseries = 'yes'
 
 # Dictionary Defining the Start and End Times for the Periods of Analysis
@@ -73,27 +73,23 @@ vehicle_types = ['cars']
 def time_period(df_region, start_time, end_time):
     
     if start_time == end_time:
-        df_tod=df_region[df_region.Hour == start_time]
+        df_tod=df_region[df_region.hour == start_time]
     
     else:
-        df_tod=df_region[df_region.Hour >= start_time]
-        df_tod=df_tod[df_tod.Hour < end_time]
+        df_tod=df_region[df_region.hour >= start_time]
+        df_tod=df_tod[df_tod.hour < end_time]
              
     return df_tod
 
 # Function to Return the Timeperiod Travel Time
-def travel_time(tod, df_timeperiod, average_per):
+def travel_time(df_timeperiod, average_per):
 
     # Calculate average observed and reference speeds
     df_avg = df_timeperiod.groupby('Tmc').quantile(average_per)    
     df_avg = df_avg.reset_index()
     
     # Calculate the ratio of observed to reference speed 
-    df_avg[tod+'_ratio'] = df_avg['speed'] / df_avg['posted']
-
-    # Rename columns for cleaner output
-    df_avg  = df_avg.rename(columns={'speed':tod+'_speed'})
-    df_avg  = df_avg.rename(columns={'time':tod+'_time'})
+    df_avg['ratio'] = df_avg['speed'] / df_avg['posted']
     df_avg  = df_avg.drop(columns=['posted'])
         
     return df_avg
@@ -194,7 +190,7 @@ for months in analysis_months:
         df_working_spd = pd.read_csv(data_file)
         keep_columns = ['tmc_code','measurement_tstamp','speed','travel_time_seconds']
         df_working_spd = df_working_spd.loc[:,keep_columns]
-        df_working_spd  = df_working_spd.rename(columns={'tmc_code':'Tmc','travel_time_seconds':'time'}) 
+        df_working_spd  = df_working_spd.rename(columns={'tmc_code':'Tmc','travel_time_seconds':'travel_time'}) 
 
         # Add the posted speed limit to the TMC Speed file
         print 'Adding the posted speed limit to the  ' + months + ' ' + vehicles + ' Speed file'
@@ -207,10 +203,10 @@ for months in analysis_months:
 
         # Split out the date and time into their own columns
         print 'Splitting out the Date and Time in the ' + months + ' ' + vehicles + ' speed file'
-        df_working_spd[['Date', 'Time']] = df_working_spd['measurement_tstamp'].str.split(' ', expand=True)
-        df_working_spd[['Hour', 'Minute', 'Seconds']] = df_working_spd['Time'].str.split(':', expand=True)
-        df_working_spd['Hour']= df_working_spd['Hour'].astype(str).astype(int)
-        df_working_spd  = df_working_spd.drop(columns=['measurement_tstamp','Date','Time','Minute','Seconds'])
+        df_working_spd[['date', 'time']] = df_working_spd['measurement_tstamp'].str.split(' ', expand=True)
+        df_working_spd[['hour', 'minute', 'seconds']] = df_working_spd['time'].str.split(':', expand=True)
+        df_working_spd['hour']= df_working_spd['hour'].astype(str).astype(int)
+        df_working_spd  = df_working_spd.drop(columns=['measurement_tstamp','date','time','minute','seconds'])
     
         df_output = df_working_tmc
         summary_report.write('Total Number of TMC segments: '+ str(len(df_output)) + '\n')
@@ -221,10 +217,24 @@ for months in analysis_months:
     
             # Trim the Full Dataframe so it only has observations for the Time Period of Interest and then trim to only TMC Code and Speed
             df_tod = time_period(df_working_spd, time_of_day['start_time'][x], time_of_day['end_time'][x])
-            df_tod = df_tod.drop(columns=['Hour'])
     
             # Calculate the Speed for the Current Time Period for the Desired Percentile
-            df_spd = travel_time(time_of_day['TOD_Name'][x], df_tod, speed_percentile)
+            df_spd = travel_time(df_tod, speed_percentile)
+            
+            # Append the Time Series Dataframe if that output is called for
+            if output_timeseries == 'yes':
+                
+                if x == 0:
+                    df_timeseries_output = df_spd
+                
+                else: 
+                    df_timeseries_output = df_timeseries_output.append(df_spd,ignore_index=True)
+            
+            # Rename columns for cleaner output
+            df_spd  = df_spd.rename(columns={'speed':time_of_day['TOD_Name'][x] + '_speed'})
+            df_spd  = df_spd.rename(columns={'travel_time':time_of_day['TOD_Name'][x] + '_time'})
+            df_spd  = df_spd.rename(columns={'ratio':time_of_day['TOD_Name'][x] + '_ratio'})
+            df_spd = df_spd.drop(columns=['hour'])
 
             # Summarize Time Period Specific Data in a text file
             summary_report = results_output_summary(df_spd, summary_report, vehicles, output_directory, time_of_day['TOD_Name'][x], moderate_congestion, severe_congestion, str(len(df_output)))
@@ -235,13 +245,22 @@ for months in analysis_months:
         # Write out the vehicle specific dataframe to csv if desired
         if output_csv == 'yes':
             df_output.to_csv(output_directory + '/' + months +'_' + analysis_year + '_' + vehicles +'_tmc_'+str(int(speed_percentile*100))+'th_percentile_speed.csv',index=False)
-    
+
+            if output_timeseries == 'yes':
+                df_timeseries_output.to_csv(output_directory + '/' + months +'_' + analysis_year + '_' + vehicles +'_tmc_timeseries.csv',index=False)
+            
         # Now join the CSV to the NPMRDS Shapefile based on a table join and save the revised shapefile
         print 'Creating the ' + months + ' ' + vehicles + ' shapefile'
         working_shapefile = gp_table_join(df_output,tmc_shapefile)
         working_shapefile.to_file(output_directory + '/' + months +'_' + analysis_year + '_' + vehicles + '_travel_time_by_tod.shp')
         shutil.copyfile(tmc_projection, output_directory + '/' + months +'_' + analysis_year + '_' + vehicles + '_travel_time_by_tod.prj')
     
+        if output_timeseries == 'yes':
+            print 'Creating the ' + months + ' ' + vehicles + ' timeseries shapefile'
+            working_shapefile = gp_table_join(df_timeseries_output,tmc_shapefile)
+            working_shapefile.to_file(output_directory + '/' + months +'_' + analysis_year + '_' + vehicles + '_timeseries.shp')
+            shutil.copyfile(tmc_projection, output_directory + '/' + months +'_' + analysis_year + '_' + vehicles + '_timeseries.prj')
+        
         # Delete the uncompressed files
         print 'Deleting the temporary ' + months + ' ' + vehicles + ' working files'
         os.remove(data_file)
