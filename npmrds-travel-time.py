@@ -38,7 +38,7 @@ tmc_projection = working_path + 'reference/shapefiles/Washington.prj'
 
 # Reference Files for use in Analysis
 tmc_posted_speed_file = working_path + 'reference/tmc_posted_speed.csv' 
-tmc_exclusion_file = working_path + 'tmc_exclusions.csv' 
+tmc_exclusion_file = working_path + 'reference/tmc_exclusions.csv' 
 
 # Percentile to be used for the Average Speed Calculation
 speed_percentile = 0.80
@@ -142,6 +142,10 @@ keep_columns = ['Tmc','PostedSpeed']
 posted_df = posted_df.loc[:,keep_columns]
 posted_df['PostedSpeed']=  posted_df['PostedSpeed'].astype(float)
 
+# Create a list of tmc's to be excluded 
+exclude_df = pd.read_csv(tmc_exclusion_file)
+exclude_list = exclude_df['Tmc'].tolist()
+
 # loop over the monthly data to be analyzed
 for months in analysis_months:
     
@@ -185,6 +189,10 @@ for months in analysis_months:
         print 'Adding the posted speed limit to the  ' + months + ' ' + vehicles + ' TMC file'
         df_working_tmc = pd.merge(df_working_tmc, posted_df, on='Tmc', suffixes=('_x','_y'), how='left')
 
+        # Remove any TMC's in the exclusion list
+        for removal_tmc in exclude_list:
+            df_working_tmc = df_working_tmc[df_working_tmc.Tmc != removal_tmc]
+            
         # Open the vehicle specific TMC speed file and store in dataframe
         print 'Loading the ' + months + ' ' + vehicles + ' Speed file into a Pandas Dataframe'
         df_working_spd = pd.read_csv(data_file)
