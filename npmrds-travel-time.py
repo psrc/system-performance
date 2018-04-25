@@ -7,6 +7,7 @@ import geopandas as gp
 import os
 import shutil
 import zipfile
+import getpass
 
 # Year to Analyze in a 4 digit format
 analysis_year = '2018'
@@ -15,9 +16,9 @@ analysis_year = '2018'
 analysis_months = ['mar']
 
 # Path to the System Performance Data on the server
-working_path = 'c:/System_Performance/travel-time/'
-#working_path = '//file2/Projects/System_Performance/travel-time/'
+working_path = '//file2/Projects/System_Performance/travel-time/'
 data_directory = working_path + 'downloads/'
+temp_path = os.path.join('c:\\Users',getpass.getuser(),'Downloads')
 
 month_lookup = {'jan' : '01',
                 'feb' : '02',
@@ -168,15 +169,19 @@ for months in analysis_months:
         summary_report.write('Analysis Month: '+ months + '\n')
         summary_report.write('Analysis Year: '+ analysis_year + '\n')
              
-        # First uncompress files for use in analysis
+        # Copy the compressed files to the users download directory for quicker processing
+        shutil.copyfile(data_directory + months + analysis_year+vehicles+'.zip', temp_path + '\\' + months + analysis_year+vehicles+'.zip')
+        
+        # Uncompress files for use in analysis and then remove the temporary archive file
         print 'Uncompressing the temporary ' + months + ' ' + vehicles + ' working files for analysis.'
-        npmrds_archive = zipfile.ZipFile(data_directory+ months + analysis_year+vehicles+'.zip', 'r')
-        npmrds_archive.extractall(data_directory)
-        npmrds_archive.close()    
+        npmrds_archive = zipfile.ZipFile(temp_path + '\\' + months + analysis_year+vehicles+'.zip', 'r')
+        npmrds_archive.extractall(temp_path)
+        npmrds_archive.close()
+        os.remove(temp_path + '\\' + months + analysis_year+vehicles+'.zip')
 
-        data_file = data_directory + months + analysis_year + vehicles +'.csv'      
-        tmc_file = data_directory + '/TMC_Identification.csv'
-        contents_file = data_directory + '/Contents.txt'
+        data_file = temp_path + '\\' + months + analysis_year + vehicles +'.csv'      
+        tmc_file = temp_path + '\\' + 'TMC_Identification.csv'
+        contents_file = temp_path + '\\' + 'Contents.txt'
 
         # Open the vehicle specific TMC Identification file and store in dataframe
         print 'Loading the ' + months + ' ' + vehicles + ' TMC file into a Pandas Dataframe'
@@ -260,7 +265,7 @@ for months in analysis_months:
         # Now join the CSV to the NPMRDS Shapefile based on a table join and save the revised shapefile
         print 'Creating the ' + months + ' ' + vehicles + ' shapefile'
         working_shapefile = gp_table_join(df_output,tmc_shapefile)
-        working_shapefile.to_file(output_directory + '/' + months +'_' + analysis_year + '_' + vehicles + '_travel_time_by_tod.shp')
+        working_shapefile.to_file(output_directory + '/' + months +'_' + analysis_year + '_' + vehicles + '_travel_time_by_tod.shp')     
         shutil.copyfile(tmc_projection, output_directory + '/' + months +'_' + analysis_year + '_' + vehicles + '_travel_time_by_tod.prj')
     
         if output_timeseries == 'yes':
