@@ -31,24 +31,25 @@ tmc_posted_speed_file = working_path + 'reference/tmc_posted_speed.csv'
 tmc_exclusion_file = working_path + 'reference/tmc_exclusions.csv' 
 
 # Percentile to be used for the Average Speed Calculation
-speed_percentile = 0.95
+speed_percentile = 0.50
 low_spd = 10
 high_spd = 75
 
 # Congestion Thresholds
-moderate_congestion = 0.70
-severe_congestion = 0.50
+moderate_congestion = 0.75
+heavy_congestion = 0.50
+severe_congestion = 0.25
 
 # Flag to determine if csv file is output or not (yes or no)
-output_csv = 'no'
+output_csv = 'yes'
 
 # Flag to determine if a csv file for a time series animation in ArcMap is desired yes or no
 output_timeseries = 'yes'
 
-# Hours to summarize in the output file with peak period increments of 15, 30 or 60 minutes
+# Hours to summarize in the output file with time increments of 15, 30 or 60 minutes
 first_hour = 5
 last_hour = 22
-peak_increment = 15
+time_increment = 30
 
 # Create time of day list to iterate over
 analysis_time = []
@@ -57,22 +58,11 @@ for x in range(first_hour,last_hour+1):
    
     analysis_time.append(str(x)+':00')
     
-    if x >=5 and x<10 or x>=15 and x<19:
-        
-        for increments in range(1, 60/peak_increment):
-            analysis_time.append(str(x) + ':' + str(increments * peak_increment))
+    for increments in range(1, 60/time_increment):
+        analysis_time.append(str(x) + ':' + str(increments * time_increment))
 
 analysis_time = [dt.datetime.strptime(x, '%H:%M') for x in analysis_time]
            
-# Dictionary Defining the Start and End Times for the Periods of Analysis
-time_of_day = {"TOD_Name":['5am','6am','7am','8am','9am','10am','11am','12pm','1pm',
-                           '2pm','3pm','4pm','5pm','6pm','7pm','8pm','9pm','10pm'],
-               "start_time":[5,6,7,8,9,10,11,12,13,
-                             14,15,16,17,18,19,20,21,22],
-               "end_time":[5,6,7,8,9,10,11,12,13,
-                           14,15,16,17,18,19,20,21,22]
-           }
-
 # List of Vehicle Type to analyze
 vehicle_types = ['cars']
 
@@ -89,39 +79,31 @@ if not os.path.exists(output_directory):
     os.makedirs(output_directory)
 
 # Function to trim the dataframe to the time period of interest
-def time_period(df_region, analysis_period, time_increment):
+def time_period(df_region, current_period, next_period):
     
-    analysis_hour = analysis_period.hour
-    analysis_minute = analysis_period.minute
+    start_hour = current_period.hour
+    end_hour = next_period.hour
+        
+    start_minute = current_period.minute
+    end_minute = next_period.minute
+           
+    # Trim the dataframe to inlcude the entire hour for the current period
+    df_region = df_region[df_region['measurement_tstamp'].dt.hour == start_hour]
     
-    # Trim down the dataframe to inlcude the entire hour
-    df_tod=df_region[df_region['measurement_tstamp'].dt.hour == analysis_hour]
-    
-    # Trim down the minutes only if the minute is greater than 0 
-    if analysis_minute > 0:
-        df_tod=df_tod[df_tod['measurement_tstamp'].dt.minute >= analysis_minute]
-        df_tod=df_tod[df_tod['measurement_tstamp'].dt.minute < analysis_minute + time_increment]
-    
-    df_tod['hour']=df_tod['measurement_tstamp'].dt.hour
-         
-    return df_tod
-                                                                   
-# Function to trim the dataframe to the time period of interest
-def hourly_period(df_region, start_hour, end_hour):
-    
-    df_region['hour']=df_region['measurement_tstamp'].dt.hour
-    
-    if start_hour == end_hour:
-        df_region=df_region[df_region['measurement_tstamp'].dt.hour == start_hour]
+    # Trim down the hourly frame for the minutes of interest 
+    if end_hour == start_hour:
+        df_region = df_region[df_region['measurement_tstamp'].dt.minute < end_minute]
+        df_region = df_region[df_region['measurement_tstamp'].dt.minute >= start_minute]
     
     else:
-        df_region=df_region[df_region['measurement_tstamp'].dt.hour >= start_hour]
-        df_region=df_region[df_region['measurement_tstamp'].dt.hour < end_hour]
-         
+        df_region = df_region[df_region['measurement_tstamp'].dt.minute >= start_minute]
+    
+    df_region['time']= str(start_hour) + ':' + str(start_minute)
+            
     return df_region
-
+                                                                   
 # Function to Return the Timeperiod Travel Time
-def travel_time(df_timeperiod, average_per):
+def calculate_speed(df_timeperiod, average_per):
 
     # Calculate average observed and reference speeds
     df_avg = df_timeperiod.groupby('Tmc').quantile(average_per)    
@@ -144,16 +126,19 @@ def gp_table_join(update_table,join_shapefile):
     return merged
 
 # Function to create summary file
-def results_output_summary(working_df, working_file, vehicle_type, results_directory, time_period, moderate, severe, total_tmc):
+def results_output_summary(working_df, working_file, vehicle_type, results_directory, time_period, moderate, heavy, severe, total_tmc):
       
     all_tmc = float(total_tmc)
     total_tmc_data = float(len(working_df))
     percent_tmc_data = (round((total_tmc_data / all_tmc),2))*100
                        
-    segments_moderately_congested = float(len(working_df[(working_df[time_period+'_ratio']<moderate)]))
+    segments_moderately_congested = float(len(working_df[(working_df[time_period+'_ratio']<=moderate)]))
     percent_moderately_congested = (round((segments_moderately_congested / total_tmc_data),2))*100
+
+    segments_heavily_congested = float(len(working_df[(working_df[time_period+'_ratio']<=heavy)]))
+    percent_heavily_congested = (round((segments_heavily_congested / total_tmc_data),2))*100
     
-    segments_severely_congested = float(len(working_df[(working_df[time_period+'_ratio']<severe)]))
+    segments_severely_congested = float(len(working_df[(working_df[time_period+'_ratio']<=severe)]))
     percent_severely_congested = (round((segments_severely_congested / total_tmc_data),2))*100
     
     working_file.write(' ' + '\n')
@@ -162,11 +147,14 @@ def results_output_summary(working_df, working_file, vehicle_type, results_direc
     working_file.write('  --- Total Number of TMC segments with data: ' + str(total_tmc_data) + '\n')  
     working_file.write('  --- % of Total TMC segments with data: ' + str(percent_tmc_data) + '%' + '\n')
     working_file.write(' ' + '\n')
-    working_file.write('  --- Total Number of TMC segments under 70% of the posted speed: ' + str(segments_moderately_congested) + '\n')
-    working_file.write('  --- % of TMC segments under 70% of the posted speed: ' + str(percent_moderately_congested) + '%' + '\n')
+    working_file.write('  --- Total Number of TMC segments under 75% of the posted speed: ' + str(segments_moderately_congested) + '\n')
+    working_file.write('  --- % of TMC segments under 75% of the posted speed: ' + str(percent_moderately_congested) + '%' + '\n')
     working_file.write(' ' + '\n')
-    working_file.write('  --- Total Number of TMC segments under 50% of the posted speed: ' + str(segments_severely_congested) + '\n')
-    working_file.write('  --- % of TMC segments under 50% of the posted speed: ' + str(percent_severely_congested) + '%' + '\n')
+    working_file.write('  --- Total Number of TMC segments under 50% of the posted speed: ' + str(segments_heavily_congested) + '\n')
+    working_file.write('  --- % of TMC segments under 50% of the posted speed: ' + str(percent_heavily_congested) + '%' + '\n')
+    working_file.write(' ' + '\n')
+    working_file.write('  --- Total Number of TMC segments under 25% of the posted speed: ' + str(segments_severely_congested) + '\n')
+    working_file.write('  --- % of TMC segments under 25% of the posted speed: ' + str(percent_severely_congested) + '%' + '\n')
     working_file.write(' ' + '\n')
 
     return working_file
@@ -261,14 +249,27 @@ for vehicles in vehicle_types:
     os.remove(tmc_file)
 
     # Travel Times by Time Period 
-    for x in range(0,len(time_of_day['TOD_Name'])):
-        print 'Working on '+str(time_of_day['TOD_Name'][x])+' Travel Speed calculation for ' + months + ' ' + vehicles + ' tmc records'
+    for x in range(0,(len(analysis_time)-1)):
+
+        display_hour = str(analysis_time[x].hour)
+        
+        if analysis_time[x].minute == 0:
+            display_minute = '00'
+            
+        else: 
+            display_minute = str(analysis_time[x].minute)
+        
+        column_time = display_hour + display_minute
+        display_time = display_hour + ':' + display_minute
+
+        print 'Working on ' + vehicles + ' ' + display_time + ' calculations.'
     
         # Trim the Full Dataframe so it only has observations for the Time Period of Interest
-        df_tod = hourly_period(df_analysis, time_of_day['start_time'][x], time_of_day['end_time'][x])
-    
+        df_tod = time_period(df_analysis, analysis_time[x], analysis_time[x+1])
+           
         # Calculate the Speed for the Current Time Period for the Desired Percentile
-        df_spd = travel_time(df_tod, speed_percentile)
+        df_spd = calculate_speed(df_tod, speed_percentile)
+        df_spd['time'] = display_time
             
         # Append the Time Series Dataframe if that output is called for
         if output_timeseries == 'yes':
@@ -280,13 +281,13 @@ for vehicles in vehicle_types:
                 df_timeseries_output = df_timeseries_output.append(df_spd,ignore_index=True)
             
         # Rename columns for cleaner output
-        df_spd  = df_spd.rename(columns={'speed':time_of_day['TOD_Name'][x] + '_speed'})
-        df_spd  = df_spd.rename(columns={'travel_time':time_of_day['TOD_Name'][x] + '_time'})
-        df_spd  = df_spd.rename(columns={'ratio':time_of_day['TOD_Name'][x] + '_ratio'})
-        df_spd = df_spd.drop(columns=['hour'])
+        df_spd  = df_spd.rename(columns={'speed':column_time + '_speed'})
+        df_spd  = df_spd.rename(columns={'travel_time':column_time + '_time'})
+        df_spd  = df_spd.rename(columns={'ratio':column_time + '_ratio'})
+        df_spd = df_spd.drop(columns=['time'])
 
         # Summarize Time Period Specific Data in a text file
-        summary_report = results_output_summary(df_spd, summary_report, vehicles, output_directory, time_of_day['TOD_Name'][x], moderate_congestion, severe_congestion, str(len(df_output)))
+        summary_report = results_output_summary(df_spd, summary_report, vehicles, output_directory, column_time, moderate_congestion, heavy_congestion, severe_congestion, str(len(df_output)))
         
         # Merge the Speed data with the TMC summary file
         df_output = pd.merge(df_output, df_spd, on='Tmc', suffixes=('_x','_y'), how='left')
@@ -296,8 +297,12 @@ for vehicles in vehicle_types:
         df_output.to_csv(output_directory + '/' + period +'_' + analysis_year + '_' + vehicles +'_tmc_'+str(int(speed_percentile*100))+'th_percentile_speed.csv',index=False)
 
     if output_timeseries == 'yes':
-        df_timeseries_output.to_csv(output_directory + '/' + period +'_' + analysis_year + '_' + vehicles +'_tmc_timeseries.csv',index=False)
-            
+        df_timeseries_output.to_csv(output_directory + '/' + period +'_' + analysis_year + '_' + vehicles +'_tmc_'+str(int(speed_percentile*100))+'th_percentile_timeseries.csv',index=False)
+
+    df_timeseries_output['timestamp'] = pd.to_datetime(df_timeseries_output.time)    
+    df_timeseries_output['timestamp'] = df_timeseries_output['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
+    df_timeseries_output = df_timeseries_output.drop(columns=['time'])
+                   
     # Now join the CSV to the NPMRDS Shapefile based on a table join and save the revised shapefile
     print 'Creating the ' + period + ' ' + vehicles + ' shapefile'
     working_shapefile = gp_table_join(df_output,tmc_shapefile)
