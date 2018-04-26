@@ -31,7 +31,7 @@ tmc_posted_speed_file = working_path + 'reference/tmc_posted_speed.csv'
 tmc_exclusion_file = working_path + 'reference/tmc_exclusions.csv' 
 
 # Percentile to be used for the Average Speed Calculation
-speed_percentile = 0.80
+speed_percentile = 0.95
 low_spd = 10
 high_spd = 75
 
@@ -109,16 +109,16 @@ def time_period(df_region, analysis_period, time_increment):
 # Function to trim the dataframe to the time period of interest
 def hourly_period(df_region, start_hour, end_hour):
     
+    df_region['hour']=df_region['measurement_tstamp'].dt.hour
+    
     if start_hour == end_hour:
-        df_tod=df_region[df_region['measurement_tstamp'].dt.hour == start_hour]
+        df_region=df_region[df_region['measurement_tstamp'].dt.hour == start_hour]
     
     else:
-        df_tod=df_region[df_region['measurement_tstamp'].dt.hour >= start_hour]
-        df_tod=df_tod[df_tod['measurement_tstamp'].dt.hour < end_hour]
-    
-    df_tod['hour']=df_tod['measurement_tstamp'].dt.hour
+        df_region=df_region[df_region['measurement_tstamp'].dt.hour >= start_hour]
+        df_region=df_region[df_region['measurement_tstamp'].dt.hour < end_hour]
          
-    return df_tod
+    return df_region
 
 # Function to Return the Timeperiod Travel Time
 def travel_time(df_timeperiod, average_per):
