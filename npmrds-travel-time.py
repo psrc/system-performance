@@ -8,6 +8,7 @@ import os
 import shutil
 import zipfile
 import getpass
+import datetime as dt
 
 # Year to Analyze in a 4 digit format
 analysis_year = '2018'
@@ -56,6 +57,25 @@ output_csv = 'no'
 # Flag to determine if a csv file for a time series animation in ArcMap is desired yes or no
 output_timeseries = 'yes'
 
+# Hours to summarize in the output file with peak period increments of 15, 30 or 60 minutes
+first_hour = 5
+last_hour = 22
+peak_increment = 15
+
+# Create time of day list to iterate over
+analysis_time = []
+
+for x in range(first_hour,last_hour+1):
+   
+    analysis_time.append(str(x)+':00')
+    
+    if x >=5 and x<10 or x>=15 and x<19:
+        
+        for increments in range(1, 60/peak_increment):
+            analysis_time.append(str(x) + ':' + str(increments * peak_increment))
+
+analysis_time = [dt.datetime.strptime(x, '%H:%M') for x in analysis_time]
+           
 # Dictionary Defining the Start and End Times for the Periods of Analysis
 time_of_day = {"TOD_Name":['5am','6am','7am','8am','9am','10am','11am','12pm','1pm',
                            '2pm','3pm','4pm','5pm','6pm','7pm','8pm','9pm','10pm'],
@@ -69,17 +89,37 @@ time_of_day = {"TOD_Name":['5am','6am','7am','8am','9am','10am','11am','12pm','1
 vehicle_types = ['cars']
 
 # This next part of the script contains a couple functions that are run on the dataset                                                               
+
+# Function to trim the dataframe to the time period of interest
+def time_period(df_region, analysis_period, time_increment):
+    
+    analysis_hour = analysis_period.hour
+    analysis_minute = analysis_period.minute
+    
+    # Trim down the dataframe to inlcude the entire hour
+    df_tod=df_region[df_region['measurement_tstamp'].dt.hour == analysis_hour]
+    
+    # Trim down the minutes only if the minute is greater than 0 
+    if analysis_minute > 0:
+        df_tod=df_tod[df_tod['measurement_tstamp'].dt.minute >= analysis_minute]
+        df_tod=df_tod[df_tod['measurement_tstamp'].dt.minute < analysis_minute + time_increment]
+    
+    df_tod['hour']=df_tod['measurement_tstamp'].dt.hour
+         
+    return df_tod
                                                                    
 # Function to trim the dataframe to the time period of interest
-def time_period(df_region, start_time, end_time):
+def hourly_period(df_region, start_hour, end_hour):
     
-    if start_time == end_time:
-        df_tod=df_region[df_region.hour == start_time]
+    if start_hour == end_hour:
+        df_tod=df_region[df_region['measurement_tstamp'].dt.hour == start_hour]
     
     else:
-        df_tod=df_region[df_region.hour >= start_time]
-        df_tod=df_tod[df_tod.hour < end_time]
-             
+        df_tod=df_region[df_region['measurement_tstamp'].dt.hour >= start_hour]
+        df_tod=df_tod[df_tod['measurement_tstamp'].dt.hour < end_hour]
+    
+    df_tod['hour']=df_tod['measurement_tstamp'].dt.hour
+         
     return df_tod
 
 # Function to Return the Timeperiod Travel Time
@@ -170,6 +210,7 @@ for months in analysis_months:
         summary_report.write('Analysis Year: '+ analysis_year + '\n')
              
         # Copy the compressed files to the users download directory for quicker processing
+        print 'Copying the temporary ' + months + ' ' + vehicles + ' zip file to the downloads directory for faster analysis.'
         shutil.copyfile(data_directory + months + analysis_year+vehicles+'.zip', temp_path + '\\' + months + analysis_year+vehicles+'.zip')
         
         # Uncompress files for use in analysis and then remove the temporary archive file
@@ -214,13 +255,9 @@ for months in analysis_months:
         df_working_spd = df_working_spd[df_working_spd.speed > low_spd]
         df_working_spd = df_working_spd[df_working_spd.speed < high_spd]
 
-        # Split out the date and time into their own columns
-        print 'Splitting out the Date and Time in the ' + months + ' ' + vehicles + ' speed file'
-        df_working_spd[['date', 'time']] = df_working_spd['measurement_tstamp'].str.split(' ', expand=True)
-        df_working_spd[['hour', 'minute', 'seconds']] = df_working_spd['time'].str.split(':', expand=True)
-        df_working_spd['hour']= df_working_spd['hour'].astype(str).astype(int)
-        df_working_spd  = df_working_spd.drop(columns=['measurement_tstamp','date','time','minute','seconds'])
-    
+        # Convert the Time Stamp column to a pandas datetime format 
+        df_working_spd.measurement_tstamp = pd.to_datetime(df_working_spd.measurement_tstamp)
+            
         df_output = df_working_tmc
         summary_report.write('Total Number of TMC segments: '+ str(len(df_output)) + '\n')
 
@@ -228,8 +265,8 @@ for months in analysis_months:
         for x in range(0,len(time_of_day['TOD_Name'])):
             print 'Working on '+str(time_of_day['TOD_Name'][x])+' Travel Speed calculation for ' + months + ' ' + vehicles + ' tmc records'
     
-            # Trim the Full Dataframe so it only has observations for the Time Period of Interest and then trim to only TMC Code and Speed
-            df_tod = time_period(df_working_spd, time_of_day['start_time'][x], time_of_day['end_time'][x])
+            # Trim the Full Dataframe so it only has observations for the Time Period of Interest
+            df_tod = hourly_period(df_working_spd, time_of_day['start_time'][x], time_of_day['end_time'][x])
     
             # Calculate the Speed for the Current Time Period for the Desired Percentile
             df_spd = travel_time(df_tod, speed_percentile)
