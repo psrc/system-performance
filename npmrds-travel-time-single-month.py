@@ -20,16 +20,16 @@ input_percentile = float(sys.argv[4])
 
 #define working folders
 working_path = os.getcwd()
-data_directory = working_path + '\\data\\' + 'npmrds\\' 
+data_directory = 'Y:\\System_Performance\\travel-time\\downloads'
 temp_path = os.path.join('c:\\Users',getpass.getuser(),'Downloads')
 
 #Reference Files for use in Analysis
-tmc_posted_speed_file = working_path + '\\tmc_posted_speed.csv' 
-tmc_exclusion_file = working_path + '\\tmc_exclusions.csv' 
+tmc_posted_speed_file = os.path.join(working_path,'tmc_posted_speed.csv')
+tmc_exclusion_file = os.path.join(working_path,'tmc_exclusions.csv')
 
 # Shapefile of TMC's for use in shapefile joining
-tmc_shapefile = data_directory + 'Washington\\Washington.shp' 
-tmc_projection = data_directory + 'Washington\\Washington.prj'
+tmc_shapefile = os.path.join(data_directory,'Washington','Washington.shp')
+tmc_projection = os.path.join(data_directory,'Washington','Washington.prj')
 
 # Percentile to be used for the Average Speed Calculation
 low_spd = 5
@@ -89,7 +89,7 @@ for year in analysis_year:
         if os.path.exists(temp_path + '\\' + months + year + vehicles+'.zip'):
             os.remove(temp_path + '\\' + months + year + vehicles+'.zip')
 
-        shutil.copyfile(data_directory + months + year + vehicles +'.zip', temp_path + '\\' + months + year + vehicles +'.zip')
+        shutil.copyfile(data_directory + '\\' + months + year + vehicles +'.zip', temp_path + '\\' + months + year + vehicles +'.zip')
         npmrds_archive = zipfile.ZipFile(temp_path + '\\' + months + year + vehicles +'.zip', 'r')
         npmrds_archive.extractall(temp_path)
         npmrds_archive.close()
