@@ -9,15 +9,14 @@ import os
 import shutil
 import zipfile
 import getpass
+import sys
+import ast
 
-# Year to Analyze in a 4 digit format
-analysis_year = ['2019']
-
-# Vehicle Type to analyze - either cars or trucks
-vehicles = 'cars'
-
-# List of Months to analyze using the three digit text code
-analysis_months = ['May']
+# Get the inputs passed from the system argument
+analysis_months = ast.literal_eval(sys.argv[1])
+analysis_year = ast.literal_eval(sys.argv[2])
+vehicles = sys.argv[3]
+input_percentile = float(sys.argv[4])
 
 #define working folders
 working_path = os.getcwd()
@@ -33,7 +32,6 @@ tmc_shapefile = data_directory + 'Washington\\Washington.shp'
 tmc_projection = data_directory + 'Washington\\Washington.prj'
 
 # Percentile to be used for the Average Speed Calculation
-input_percentile = 0.95
 low_spd = 5
 high_spd = 90
 
@@ -81,7 +79,7 @@ for year in analysis_year:
         print ('Working on Travel Speed calculation for ' + months + ' ' + year + ' ' + vehicles + ' tmc records')
         
         #create output folder if it does not exist
-        output_directory = os.path.join(data_directory, 'output', months)
+        output_directory = os.path.join(working_path, 'output', months)
         
         # Create the output directory for the speed results if it does not already exist
         if not os.path.exists(output_directory):
@@ -155,4 +153,4 @@ for year in analysis_year:
 end_of_production = time.time()
 print ('The Total Time for all processes took', (end_of_production-start_of_production)/60, 'minutes to execute.')
 
-#exit()
+exit()
